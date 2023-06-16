@@ -1,0 +1,8 @@
+/.benchmarks
+/.idea
+/.pytest_cache
+/.vscode
+/BVH.assets
+/imgui.ini
+/venv
+/__pycache__
