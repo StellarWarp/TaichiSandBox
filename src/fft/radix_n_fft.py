@@ -102,7 +102,7 @@ def fft_pass(k: ti.u32,
     # reset to 1 if not debug
     for m in range(0, radix):
         i = fast_mod(c + m*b, size) + offset
-        w = (w0 * m) % size
+        w = w0 * m
         phi = -2 * tm.pi / size * w
 
         twiddle = tm.vec2(tm.cos(phi), tm.sin(phi))
@@ -129,7 +129,7 @@ def fft_grouped(size: ti.template(),
                 buffer: ti.template(),
                 target_):
     ti.loop_config(block_dim=size)
-    log2_max_radix = ti.static(int(5))
+    log2_max_radix = ti.static(int(4))
     max_radix = ti.static(1 << log2_max_radix)
     log2_min_radix = ti.static(log2_size % log2_max_radix)
     min_radix = ti.static(1 << log2_min_radix)
@@ -238,7 +238,11 @@ def quad_fft(img: ti.template(),
         fft_2d(img, buffer, inverse=inverse)
         for i, j in img:
             z1 = img[i, j]
-            z2 = vec4_cconj(img[n-i, m-j])
+            rev_x = n - i
+            rev_y = m - j
+            if rev_x == n: rev_x = 0
+            if rev_y == m: rev_y = 0
+            z2 = vec4_cconj(img[rev_x, rev_y])
             rfgf = tm.vec4(0.5 * (z1.xy + z2.xy),
                            tm.cmul(tm.vec2(0, -0.5), z1.xy - z2.xy))
             bfaf = tm.vec4(0.5 * (z1.zw + z2.zw),
@@ -437,10 +441,12 @@ def freq_visualize(freq: ti.template(), transposed: ti.template()):
         j_ = (j + transposed.shape[1] // 2) % transposed.shape[1]
         i_freq = j * freq.shape[0] // transposed.shape[1]
         j_freq = i * freq.shape[1] // transposed.shape[0]
-        transposed[i_, j_].xy = tm.log2(tm.vec2(tm.length(
-            freq[i_freq, j_freq, 0].xy), tm.length(freq[i_freq, j_freq, 0].zw)) + 1) / 10
-        transposed[i_, j_].zw = tm.log2(tm.vec2(tm.length(
-            freq[i_freq, j_freq, 1].xy), tm.length(freq[i_freq, j_freq, 1].zw)) + 1) / 10
+        transposed[i_, j_].xy = tm.log2(
+            tm.vec2(tm.length(freq[i_freq, j_freq, 0].xy),
+                    tm.length(freq[i_freq, j_freq, 0].zw)) + 1) *256
+        transposed[i_, j_].zw = tm.log2(
+            tm.vec2(tm.length(freq[i_freq, j_freq, 1].xy),
+                    tm.length(freq[i_freq, j_freq, 1].zw)) + 1) *256
 
 
 def main(kernel_profiler=False, debug=False):
@@ -686,15 +692,15 @@ def main(kernel_profiler=False, debug=False):
             t3 = time.time()
             wait_transmit_time = weighted_average(t3-t2, wait_transmit_time)
 
-            field_transpose(rgba, transposed)
+            # field_transpose(rgba, transposed)
 
-            # if bloom_on:
-            #     if show_freq:
-            #         freq_visualize(rgba_freq, transposed)
-            #     else:
-            #         field_transpose(render_taget, transposed)
-            # else:
-            #     field_transpose(original, transposed)
+            if bloom_on:
+                if show_freq:
+                    freq_visualize(rgba_freq, transposed)
+                else:
+                    field_transpose(render_taget, transposed)
+            else:
+                field_transpose(original, transposed)
             lock_wait_data.release()
 
             t4 = time.time()

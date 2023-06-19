@@ -22,17 +22,16 @@ X[k] &= \sum_{n=0}^{N-1}x[n]\omega_N^{nk}\\
 \end{align*}
 $$
 
-
-
-另一种方法是将 Radix-2 公式继续展开，这样可以得到乘法次数更少的公式。
+这等价于将 Radix-2 公式展开一层
 
 $$
 \begin{align*}
 X[k] 
-&= \sum_{n=0}^{N/2-1}x[2n]\omega_{N/2}^{nk} + \omega_N^k\sum_{n=0}^{N/2-1}x[2n+1]\omega_{N/2}^{nk}\\
-&= \sum_{n=0}^{N/4-1}x[4n]\omega_{N/4}^{nk} + \omega_N^k\sum_{n=0}^{N/4-1}x[4n+2]\omega_{N/4}^{nk} + \omega_N^k\left( \sum_{n=0}^{N/4-1}x[4n+1]\omega_{N/4}^{nk} + \omega_N^k\sum_{n=0}^{N/4-1}x[4n+3]\omega_{N/4}^{nk} \right)\\
-&= \sum_{n=0}^{N/4-1}x[4n]\omega_{N/4}^{nk} + \omega_N^k\left( \sum_{n=0}^{N/4-1}x[4n+1]\omega_{N/4}^{nk} + \sum_{n=0}^{N/4-1}x[4n+2]\omega_{N/4}^{nk} \right) + \omega_N^{2k}\sum_{n=0}^{N/4-1}x[4n+3]\omega_{N/4}^{nk}\\
-&= X_{N/4}[4k] + \omega_N^k\left( X_{N/4}[4k+1] + X_{N/4}[4k+2] \right) + \omega_N^{2k}X_{N/4}[4k+3]\\
+&= \sum_{n=0}^{N/2-1}x[2n]\omega_{N/2}^{nk} + \omega^k_N\sum_{n=0}^{N/2-1}x[2n+1]\omega_{N/2}^{nk}\\
+&= X_{N/2}[2k] + \omega^k_NX_{N/2}[2k+1]\\
+&= X_{N/4}[4k] + \omega^k_{N/2}X_{N/4}[4k+2] + \omega^k_N(X_{N/4}[4k+1] + \omega^k_{N/2}X_{N/4}[4k+3])\\
+&= X_{N/4}[4k] + \omega^{2k}_{N}X_{N/4}[4k+2] + \omega^k_N( X_{N/4}[4k+1] + \omega^{2k}_{N}X_{N/4}[4k+3])\\
+&= X_{N/4}[4k] + \omega_N^kX_{N/4}[4k+1] + \omega_N^{2k}X_{N/4}[4k+2] + \omega_N^{3k}X_{N/4}[4k+3]\\
 \end{align*}
 $$
 
@@ -42,14 +41,14 @@ $$
 
 记函数 
 $$
-f^{k}_N(x_0, x_1, \cdots, x_{R-1}) = \sum_{r=0}^{R-1}x_n\omega_N^{rk}
+f^{k}_N(x_0, x_1, \cdots, x_{R-1}) = \sum_{r=0}^{R-1}x_r\omega_N^{rk}
 $$
 
 第 $L$ 层的第 $k$ 个点的映射公式为
 
 $$
 \begin{align*}
-X_{N}[k] &= f_{N}(X_{N/4}[4k], X_{N/4}[4k+1], X_{N/4}[4k+2], X_{N/4}[4k+3])\\
+X_{N}[k] &= f^k_{N}(X_{N/4}[4k], X_{N/4}[4k+1], X_{N/4}[4k+2], X_{N/4}[4k+3])\\
 \end{align*}
 $$
 
@@ -146,7 +145,7 @@ $$
 
 我们可以继续推导 Radix-8、Radix-16 …… 的映射公式
 但是 Radix-4 以上的公式太长了，不方便显示，所以我把
-分段函数的推导代码放这里了
+生成分段函数的代码放这里了
 ```py
 import sympy as sp
 k = sp.Symbol('k', integer=True)
@@ -317,5 +316,4 @@ $$
 最后一次
 
 Radix $R = 2^{log_2N \text{ mod } \log_2R_{max}} $ 的操作以完成FFT
-
 
