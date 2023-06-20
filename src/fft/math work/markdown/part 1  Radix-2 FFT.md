@@ -6,7 +6,7 @@ $$
 \begin{align*}
 X[k] 
 &= \sum_{n=0}^{N/2-1}x[2n]\omega_{N/2}^{nk} + \omega_N^k\sum_{n=0}^{N/2-1}x[2n+1]\omega_{N/2}^{nk}\\
-&= \sum_{n=0}^{N/4-1}x[4n]\omega_{N/4}^{nk} + \omega_N^k\sum_{n=0}^{N/4-1}x[4n+2]\omega_{N/4}^{nk} + \omega_N^k\left( \sum_{n=0}^{N/4-1}x[4n+1]\omega_{N/4}^{nk} + \omega_N^k\sum_{n=0}^{N/4-1}x[4n+3]\omega_{N/4}^{nk} \right)\\
+&= \sum_{n=0}^{N/4-1}x[4n]\omega_{N/4}^{nk} + \omega_N^k\sum_{n=0}^{N/4-1}x[4n+2]\omega_{N/4}^{nk} \\&+ \omega_N^k\left( \sum_{n=0}^{N/4-1}x[4n+1]\omega_{N/4}^{nk} + \omega_N^k\sum_{n=0}^{N/4-1}x[4n+3]\omega_{N/4}^{nk} \right)\\
 \end{align*}
 $$
 
