@@ -196,6 +196,55 @@ def vec4_arr_set(arr, i, v):
     arr[i,3] = v.w
 
 @ti.func
+def print_radix_buffer(buffer:ti.template()):
+    shape = buffer.get_shape()
+    for i in range(shape[0]):
+        for j in range(shape[1]):
+            print(buffer[i,j], end=' ')
+        print()
+
+@ti.func
+def fft_subpass(vec:ti.template(),
+                k_:ti.template(),
+                N_:ti.template(),
+                P_:ti.template(),
+                R_:ti.template(),
+                inverse:ti.template()):
+    shape = vec.get_shape()
+    r_ofs = 0
+    w_ofs = R_
+    
+    N = R_
+    R = ti.static(int(2))
+    P = N
+    while P > 1:
+        P //= R
+        S = N//R
+        for i in range(S):
+            k,p = i//P, i%P
+            src = ti.Vector([P*R*k + p + P*r for r in range(R)])
+            dst = ti.Vector([i + t*S         for t in range(R)])
+            # src_vec = ti.Vector([
+            #     [vec[src[r] + r_ofs, x] for x in range(4)] for r in range(R)
+            #     ])
+            phi = -2 * tm.pi / N * (k * P)
+            twiddle = tm.vec2(tm.cos(phi), tm.sin(phi))
+            if inverse:
+                twiddle.y = -twiddle.y 
+            f1 = vec4_arr_get(vec, src[0] + r_ofs)
+            f2 = vec4_arr_get(vec, src[1] + r_ofs)
+            f2 = tm.vec4(tm.cmul(f2.xy, twiddle), tm.cmul(f2.zw, twiddle))
+            v1 = f1 + f2
+            v2 = f1 - f2
+            for x in range(4):
+                vec[dst[0] + w_ofs,x] = v1[x]
+                vec[dst[1] + w_ofs,x] = v2[x]
+        w_ofs,r_ofs = r_ofs,w_ofs
+
+    return vec, r_ofs
+
+
+@ti.func
 def fft_pass(gtid: ti.u32,
              size: ti.template(),
              log2_size: ti.template(),
@@ -213,49 +262,34 @@ def fft_pass(gtid: ti.u32,
     R = ti.static(radix)
     offset = 0 # multiple target offset
     t_size = size//R
+    log2_t_size = log2_size - log2_radix
     if ti.static(is_pow2_size):
-        offset = fast_mul(fast_div(fast_mul(gtid,log2_radix), log2_size), log2_size),
+        # offset = fast_mul(fast_mul(fast_div(gtid, log2_t_size), log2_t_size),log2_radix)
+        offset = fast_mul(fast_div(fast_mul(gtid, log2_radix),log2_size), log2_size)
     else:
-        offset = gtid * R // size * size 
+        offset = gtid//t_size * t_size * R
     #read
-    radix_buffer = ti.Vector([
-        [buffer[not target, gtid + t*t_size + offset][x] for x in range(4)]
-        for t in range(R)])
+    radix_buffer = ti.Vector([[0 for x in range(4)]for r in range(2*R)],
+                              dt=ti.f32)
     
-    if gtid % size == 0:
-        print(f'gtid = {gtid}\n'
-              f'offset = {offset}\n'
-              f't_size = {t_size}\n'
-              f'P = {P}\n')
-    #radix-2 fft for each group
-    N_r = R
-    R_r = ti.static(int(2))
-    P_r = N_r//R_r
-    while P_r != 0:
-        S = N_r//R_r
-        for i in range(S):
-            k,p = i//P_r, i%P_r
-            src = ti.Vector([P_r*R_r*k + p + P_r*r for r in range(R_r)])
-            dst = ti.Vector([i + t*S      for t in range(R_r)])
-            src_vec = ti.Vector([
-                [radix_buffer[src[r], x] for x in range(4)] for r in range(R_r)
-                ])
-            phi = -2 * tm.pi / (N_r//P_r) * k
-            twiddle = tm.vec2(tm.cos(phi), tm.sin(phi))
-            if inverse:
-                twiddle.y = -twiddle.y
-            
-            f1 = vec4_arr_get(src_vec, 0)
-            f2 = vec4_arr_get(src_vec, 1)
-            f2 = tm.vec4(tm.cmul(f2.xy, twiddle), tm.cmul(f2.zw, twiddle))
-            vec4_arr_set(radix_buffer, dst[0],f1 + f2)
-            vec4_arr_set(radix_buffer, dst[1],f1 - f2)
-        P_r //= R_r
-            
-    
-    k,p = (gtid - offset)//P, gtid%P
+    k,p = (gtid%t_size)//P, (gtid%t_size)%P
     for r in range(R):
-        buffer[target, P*R*k + p + P*r + offset] = vec4_arr_get(radix_buffer, r)
+        for x in range(4):
+            radix_buffer[r,x] = buffer[not target, P*R*k + p + P*r + offset][x]
+    
+    if gtid == 0:
+        print(f'---------P = {P}-- R = {R}----------')
+    if gtid//t_size == 0:
+        print(f'gtid = {gtid}, offset = {offset:3d}, '
+            f'src = [{P*R*k + p + P*0 + offset:3d},{P*R*k + p + P*1 + offset:3d}], '
+            f'dst = [{gtid%t_size + 0*t_size + offset:3d},{gtid%t_size + 1*t_size + offset:3d}], ')
+        
+    radix_buffer,ofs = fft_subpass(radix_buffer, k,size,P,R, inverse)
+    
+
+    for r in range(R):
+        buffer[target,gtid%t_size + r*t_size + offset] = vec4_arr_get(radix_buffer, r + ofs)
+
 
 
 @ti.func
@@ -293,14 +327,14 @@ def fft_grouped(size: ti.template(),
 
    
     target = target_
-    for step in ti.static(range(0,non_pow2_pass)):
-        ti.loop_config(block_dim=size)
-        for k in range(pixel_size):
-            fft_non_pow2_pass(k, size,
-                                radix[step],
-                                radix_prod[step],
-                                buffer, target, inverse)
-        target = not target
+    # for step in ti.static(range(0,non_pow2_pass)):
+    #     ti.loop_config(block_dim=size)
+    #     for k in range(pixel_size):
+    #         fft_non_pow2_pass(k, size,
+    #                             radix[step],
+    #                             radix_prod[step],
+    #                             buffer, target, inverse)
+    #     target = not target
     for step in ti.static(range(non_pow2_pass,total_pass)):
         ti.loop_config(block_dim=size//radix[step])
         for gtid in range(pixel_size//radix[step]):
@@ -629,8 +663,8 @@ def main(kernel_profiler=False, debug=False):
     # fft_size_y = 2048//4
     # img_size_x = 3840//2
     # img_size_y = 2048//2
-    fft_size_x = 1<<4
-    fft_size_y = 1<<4
+    fft_size_x = 1<<3
+    fft_size_y = 1<<3
     img_size_x = 1<<11
     img_size_y = 1<<10
 
@@ -817,10 +851,10 @@ def main(kernel_profiler=False, debug=False):
             t1 = time.time()
             profile_extime = weighted_average(t1-t0, profile_extime)
 
-            if old_filter_x_scale != filter_x_scale or old_filter_y_scale != filter_y_scale:
-                compute_frequency_filter(
-                    frequency_fiter, rgba, buffer, filter_x_scale, filter_y_scale)
-                old_filter_x_scale, old_filter_y_scale = filter_x_scale, filter_y_scale
+            # if old_filter_x_scale != filter_x_scale or old_filter_y_scale != filter_y_scale:
+            #     compute_frequency_filter(
+            #         frequency_fiter, rgba, buffer, filter_x_scale, filter_y_scale)
+            #     old_filter_x_scale, old_filter_y_scale = filter_x_scale, filter_y_scale
 
             render_taget.copy_from(original)
             downsample(original, rgba)
@@ -869,7 +903,10 @@ def main(kernel_profiler=False, debug=False):
             t3 = time.time()
             wait_transmit_time = weighted_average(t3-t2, wait_transmit_time)
 
-            field_transpose(rgba, transposed)
+            if show_freq:
+                freq_visualize(rgba_freq, transposed, freq_visualize_factor)
+            else:
+                field_transpose(rgba, transposed)
 
             # if bloom_on:
             #     if show_freq:

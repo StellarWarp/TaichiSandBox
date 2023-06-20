@@ -32,14 +32,23 @@ def static_list():
 @ti.kernel
 def alloc_array(size:ti.template()):
 
-    vec = ti.Vector([[x if i<size else 0 for x in range(4)]for i in range(2*size)])
+    vec = ti.Vector([[x for x in range(4)]for i in range(size)])
 
     print(vec.get_shape())
     for i in range(size):
-        print(vec[i])
+        for j in range(4):
+            print(vec[i,j])
+
+    for i in range(size):
+        for j in range(4):
+            vec[i,j] += 1
+    print('------------------')
+    for i in range(size):
+        for j in range(4):
+            print(vec[i,j])
 
         
     
 
 
-alloc_array(16)
+alloc_array(4)
